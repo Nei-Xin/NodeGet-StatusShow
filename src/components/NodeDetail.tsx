@@ -1,6 +1,6 @@
-import { type ReactNode, useEffect } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Area, AreaChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Card } from './ui/card'
@@ -9,7 +9,9 @@ import { StatusDot } from './StatusDot'
 import { bytes, pct, relativeAge, uptime } from '../utils/format'
 import { deriveUsage, displayName, distroLogo, osLabel, virtLabel } from '../utils/derive'
 import { strokeColor } from '../utils/cn'
-import type { HistorySample, Node } from '../types'
+import { RpcClient } from '../api/client'
+import { taskQuery } from '../api/methods'
+import type { HistorySample, Node, SiteConfig, TaskRecord } from '../types'
 
 const TOOLTIP_STYLE = {
   background: 'hsl(var(--popover))',
@@ -18,13 +20,86 @@ const TOOLTIP_STYLE = {
   fontSize: 11,
 }
 
+const PING_TASK_LIMIT = 5000
+const PING_REFRESH_MS = 10_000
+const PING_COLORS = ['#06b6d4', '#ef4444', '#8b5cf6', '#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#84cc16']
+const ms = (v?: number | null) => (v == null || !Number.isFinite(v) ? '—' : `${v.toFixed(1)} ms`)
+
+const PING_RANGES = [
+  { label: '1小时', hours: 1 },
+  { label: '6小时', hours: 6 },
+  { label: '12小时', hours: 12 },
+  { label: '1天', hours: 24 },
+  { label: '7天', hours: 24 * 7 },
+] as const
+type PingRangeHours = (typeof PING_RANGES)[number]['hours']
+
+interface PingSeries {
+  key: string
+  label: string
+  color: string
+  points: PingPoint[]
+}
+
+interface PingChartData {
+  series: PingSeries[]
+}
+
+interface PingPoint {
+  t: number
+  value: number
+}
+
+function seriesId(row: TaskRecord, resultKey: 'ping' | 'tcp_ping') {
+  if (!row.cron_source) return ''
+  return `${resultKey}:${row.cron_source}`
+}
+
+function pingChartData(pingRows: TaskRecord[], tcpPingRows: TaskRecord[]): PingChartData {
+  const seriesLabels = new Map<string, string>()
+  const values = new Map<string, PingPoint[]>()
+
+  const add = (row: TaskRecord, resultKey: 'ping' | 'tcp_ping') => {
+    const t = Number(row.timestamp)
+    const value = Number(row.task_event_result?.[resultKey])
+    if (!Number.isFinite(t) || !Number.isFinite(value)) return
+    if (!row.cron_source) return
+    const id = seriesId(row, resultKey)
+    if (!id) return
+    seriesLabels.set(id, String(row.cron_source))
+    let points = values.get(id)
+    if (!points) values.set(id, (points = []))
+    points.push({ t, value })
+  }
+
+  for (const row of pingRows) add(row, 'ping')
+  for (const row of tcpPingRows) add(row, 'tcp_ping')
+
+  const series = [...seriesLabels.entries()].map(([id, label], i) => ({
+    key: `s${i}`,
+    label,
+    color: PING_COLORS[i % PING_COLORS.length],
+    points: (values.get(id) || []).sort((a, b) => a.t - b.t),
+  }))
+
+  return {
+    series,
+  }
+}
+
 interface Props {
   node: Node | null
   onClose: () => void
   showSource?: boolean
+  siteTokens?: SiteConfig['site_tokens']
 }
 
-export function NodeDetail({ node, onClose, showSource }: Props) {
+export function NodeDetail({ node, onClose, showSource, siteTokens = [] }: Props) {
+  const [pingData, setPingData] = useState<PingChartData>({ series: [] })
+  const [pingLoading, setPingLoading] = useState(false)
+  const [pingError, setPingError] = useState<string | null>(null)
+  const [pingRangeHours, setPingRangeHours] = useState<PingRangeHours>(1)
+
   useEffect(() => {
     if (!node) return
     const onKey = (e: KeyboardEvent) => {
@@ -38,6 +113,57 @@ export function NodeDetail({ node, onClose, showSource }: Props) {
       document.body.style.overflow = prev
     }
   }, [node, onClose])
+
+  useEffect(() => {
+    setPingData({ series: [] })
+    setPingError(null)
+    if (!node) return
+
+    const token = siteTokens.find(t => t.name === node.source) ?? siteTokens[0]
+    if (!token) return
+
+    let alive = true
+    const client = new RpcClient(token.backend_url, token.token, token.name)
+
+    const load = async () => {
+      if (alive) setPingLoading(true)
+      try {
+        const since = Date.now() - pingRangeHours * 60 * 60 * 1000
+        const [pingRows, tcpPingRows] = await Promise.all([
+          taskQuery(client, [
+            { uuid: node.uuid },
+            { type: 'ping' },
+            'is_success',
+            { timestamp_from: since },
+            { limit: PING_TASK_LIMIT },
+          ]),
+          taskQuery(client, [
+            { uuid: node.uuid },
+            { type: 'tcp_ping' },
+            'is_success',
+            { timestamp_from: since },
+            { limit: PING_TASK_LIMIT },
+          ]),
+        ])
+        if (!alive) return
+        setPingData(pingChartData(pingRows || [], tcpPingRows || []))
+        setPingError(null)
+      } catch (e) {
+        if (!alive) return
+        setPingError(e instanceof Error ? e.message : String(e))
+      } finally {
+        if (alive) setPingLoading(false)
+      }
+    }
+
+    load()
+    const timer = setInterval(load, PING_REFRESH_MS)
+    return () => {
+      alive = false
+      clearInterval(timer)
+      client.close()
+    }
+  }, [node?.uuid, node?.source, pingRangeHours, siteTokens])
 
   if (!node) return null
 
@@ -111,6 +237,30 @@ export function NodeDetail({ node, onClose, showSource }: Props) {
               />
             )}
           </div>
+        </Section>
+
+        <Section title="网络延迟">
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {PING_RANGES.map(range => (
+              <Button
+                key={range.hours}
+                type="button"
+                size="sm"
+                variant={pingRangeHours === range.hours ? 'default' : 'outline'}
+                className="h-7 px-2.5 text-xs"
+                onClick={() => setPingRangeHours(range.hours)}
+              >
+                {range.label}
+              </Button>
+            ))}
+          </div>
+          {pingData.series.some(s => s.points.length > 1) ? (
+            <PingSpark data={pingData} rangeHours={pingRangeHours} />
+          ) : (
+            <div className="h-32 flex items-center justify-center text-sm text-muted-foreground">
+              {pingLoading ? '加载中…' : pingError ? `加载失败：${pingError}` : '暂无 ping / tcp_ping 数据'}
+            </div>
+          )}
         </Section>
 
         {history.length > 1 && (
@@ -249,6 +399,82 @@ function Ring({ label, value, sub }: { label: string; value?: number; sub?: stri
           {sub}
         </div>
       )}
+    </div>
+  )
+}
+
+function PingSpark({ data, rangeHours }: { data: PingChartData; rangeHours: PingRangeHours }) {
+  const { series } = data
+  const now = Date.now()
+  const from = now - rangeHours * 60 * 60 * 1000
+  const formatTime = (t: number) =>
+    new Date(t).toLocaleString(undefined, {
+      month: rangeHours >= 24 ? '2-digit' : undefined,
+      day: rangeHours >= 24 ? '2-digit' : undefined,
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  const latest = new Map(
+    series.map(s => [
+      s.key,
+      s.points.at(-1)?.value ?? null,
+    ]),
+  )
+  return (
+    <div className="rounded-md border bg-card/50 p-3">
+      <div className="flex flex-col gap-1 mb-2">
+        <div className="flex justify-between gap-3 text-[11px]">
+          <span className="text-muted-foreground">网络延迟</span>
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+          {series.map(s => (
+            <span key={s.key} className="inline-flex items-center gap-1 min-w-0">
+              <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+              <span className="truncate max-w-[220px]" title={s.label}>{s.label}</span>
+              <span className="font-mono text-muted-foreground">{ms(latest.get(s.key))}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="h-40">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={[]} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+            <XAxis
+              type="number"
+              dataKey="t"
+              domain={[from, now]}
+              scale="time"
+              tickFormatter={formatTime}
+              minTickGap={24}
+              tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis hide domain={['auto', 'auto']} />
+            <Tooltip
+              contentStyle={TOOLTIP_STYLE}
+              labelFormatter={t => formatTime(Number(t))}
+              formatter={(v: number, name: string) => [
+                ms(v),
+                series.find(s => s.key === name)?.label ?? name,
+              ]}
+            />
+            {series.map(s => (
+              <Line
+                key={s.key}
+                type="monotone"
+                data={s.points}
+                dataKey="value"
+                name={s.key}
+                stroke={s.color}
+                strokeWidth={1.8}
+                dot={false}
+                isAnimationActive={false}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   )
 }

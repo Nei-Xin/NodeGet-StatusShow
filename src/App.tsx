@@ -247,6 +247,7 @@ export function App() {
         node={selectedNode}
         onClose={() => setSelected(null)}
         showSource={(config.site_tokens?.length ?? 0) > 1}
+        siteTokens={config.site_tokens}
       />
     </div>
   )

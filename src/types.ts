@@ -73,6 +73,17 @@ export interface HistorySample {
   netOut: number
 }
 
+export interface TaskRecord {
+  task_id: number
+  uuid: string
+  cron_source?: string | null
+  timestamp?: number
+  success?: boolean
+  task_event_type?: Record<string, unknown>
+  task_event_result?: Record<string, unknown> | null
+  error_message?: string | null
+}
+
 export interface Node {
   uuid: string
   source: string
