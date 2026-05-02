@@ -407,6 +407,38 @@ function PingSpark({ data, rangeHours }: { data: PingChartData; rangeHours: Ping
   const { series } = data
   const now = Date.now()
   const from = now - rangeHours * 60 * 60 * 1000
+  const bucketMs = rangeHours <= 6 ? 60_000 : rangeHours <= 24 ? 5 * 60_000 : 15 * 60_000
+  const endBucket = from + Math.floor((now - from) / bucketMs) * bucketMs
+  const valueBuckets = new Map<string, Map<number, number>>()
+
+  for (const s of series) {
+    const buckets = new Map<number, number>()
+    for (const p of s.points) {
+      if (!Number.isFinite(p.t) || !Number.isFinite(p.value)) continue
+      if (p.t < from || p.t > now) continue
+      const bucket = from + Math.floor((p.t - from) / bucketMs) * bucketMs
+      buckets.set(bucket, p.value)
+    }
+    valueBuckets.set(s.key, buckets)
+  }
+
+  type PingAlignedPoint = { t: number; [key: string]: number | null }
+  const alignedData: PingAlignedPoint[] = []
+  const lastValues = new Map<string, number>()
+
+  for (let t = from; t <= endBucket; t += bucketMs) {
+    const row: PingAlignedPoint = { t }
+    for (const s of series) {
+      const val = valueBuckets.get(s.key)?.get(t)
+      if (val != null) {
+        lastValues.set(s.key, val)
+        row[s.key] = val
+      } else {
+        row[s.key] = lastValues.get(s.key) ?? null
+      }
+    }
+    alignedData.push(row)
+  }
   const formatTime = (t: number) =>
     new Date(t).toLocaleString(undefined, {
       month: rangeHours >= 24 ? '2-digit' : undefined,
@@ -438,7 +470,7 @@ function PingSpark({ data, rangeHours }: { data: PingChartData; rangeHours: Ping
       </div>
       <div className="h-40">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={[]} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+          <LineChart data={alignedData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
             <XAxis
               type="number"
               dataKey="t"
@@ -463,13 +495,13 @@ function PingSpark({ data, rangeHours }: { data: PingChartData; rangeHours: Ping
               <Line
                 key={s.key}
                 type="monotone"
-                data={s.points}
-                dataKey="value"
+                dataKey={s.key}
                 name={s.key}
                 stroke={s.color}
                 strokeWidth={1.8}
                 dot={false}
                 isAnimationActive={false}
+                connectNulls={true}
               />
             ))}
           </LineChart>
