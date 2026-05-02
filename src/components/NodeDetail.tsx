@@ -215,29 +215,70 @@ export function NodeDetail({ node, onClose, showSource, siteTokens = [] }: Props
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-8">
-        <Section title="资源">
-          <div className="flex flex-wrap justify-around gap-4 sm:gap-6">
-            <Ring label="CPU" value={u.cpu} sub={loadAvg ?? undefined} />
-            <Ring
-              label="内存"
-              value={u.mem}
-              sub={u.memTotal ? `${bytes(u.memUsed)} / ${bytes(u.memTotal)}` : undefined}
-            />
-            <Ring
-              label="磁盘"
-              value={u.disk}
-              sub={u.diskTotal ? `${bytes(u.diskUsed)} / ${bytes(u.diskTotal)}` : undefined}
-            />
-            {swap != null && (
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
+        
+        {/* 上半部分：将资源圆环和趋势图表并排展示 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+          <Section title="资源" className="flex flex-col">
+            <div className="flex flex-wrap justify-around gap-4 sm:gap-6 my-auto">
+              <Ring label="CPU" value={u.cpu} sub={loadAvg ?? undefined} />
               <Ring
-                label="Swap"
-                value={swap}
-                sub={`${bytes(d?.used_swap)} / ${bytes(d?.total_swap)}`}
+                label="内存"
+                value={u.mem}
+                sub={u.memTotal ? `${bytes(u.memUsed)} / ${bytes(u.memTotal)}` : undefined}
               />
-            )}
-          </div>
-        </Section>
+              <Ring
+                label="磁盘"
+                value={u.disk}
+                sub={u.diskTotal ? `${bytes(u.diskUsed)} / ${bytes(u.diskTotal)}` : undefined}
+              />
+              {swap != null && (
+                <Ring
+                  label="Swap"
+                  value={swap}
+                  sub={`${bytes(d?.used_swap)} / ${bytes(d?.total_swap)}`}
+                />
+              )}
+            </div>
+          </Section>
+
+          {history.length > 1 && (
+            <Section title={`近 ${history.length * 2} 秒趋势`} className="flex flex-col">
+              <div className="grid grid-cols-2 gap-4 my-auto">
+                <Spark
+                  data={history}
+                  dataKey="cpu"
+                  label="CPU %"
+                  stroke="#3b82f6"
+                  domain={[0, 100]}
+                  format={pct}
+                />
+                <Spark
+                  data={history}
+                  dataKey="mem"
+                  label="内存 %"
+                  stroke="#10b981"
+                  domain={[0, 100]}
+                  format={pct}
+                />
+                <Spark
+                  data={history}
+                  dataKey="netIn"
+                  label="下行"
+                  stroke="#8b5cf6"
+                  format={v => `${bytes(v)}/s`}
+                />
+                <Spark
+                  data={history}
+                  dataKey="netOut"
+                  label="上行"
+                  stroke="#f59e0b"
+                  format={v => `${bytes(v)}/s`}
+                />
+              </div>
+            </Section>
+          )}
+        </div>
 
         <Section title="网络延迟">
           <div className="flex flex-wrap gap-1.5 mb-3">
@@ -263,50 +304,18 @@ export function NodeDetail({ node, onClose, showSource, siteTokens = [] }: Props
           )}
         </Section>
 
-        {history.length > 1 && (
-          <Section title={`近 ${history.length * 2} 秒趋势`}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <Spark
-                data={history}
-                dataKey="cpu"
-                label="CPU %"
-                stroke="#3b82f6"
-                domain={[0, 100]}
-                format={pct}
-              />
-              <Spark
-                data={history}
-                dataKey="mem"
-                label="内存 %"
-                stroke="#10b981"
-                domain={[0, 100]}
-                format={pct}
-              />
-              <Spark
-                data={history}
-                dataKey="netIn"
-                label="下行"
-                stroke="#8b5cf6"
-                format={v => `${bytes(v)}/s`}
-              />
-              <Spark
-                data={history}
-                dataKey="netOut"
-                label="上行"
-                stroke="#f59e0b"
-                format={v => `${bytes(v)}/s`}
-              />
-            </div>
-          </Section>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <Section title="系统">
+        {/* 底部信息面板：三列布局的密集数据看板 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+          <Section title="系统与内核" className="h-full">
             <KV k="主机名" v={s?.system_host_name} />
             <KV k="操作系统" v={osLabel(node)} />
             <KV k="内核" v={s?.system_kernel || s?.system_kernel_version} />
-            <KV k="CPU 架构" v={s?.arch || s?.cpu_arch} />
             <KV k="虚拟化" v={virt} />
+            <KV k="进程数" v={d?.process_count} />
+          </Section>
+
+          <Section title="计算与存储" className="h-full">
+            <KV k="CPU 架构" v={s?.arch || s?.cpu_arch} />
             <KV k="CPU 型号" v={cpu?.brand || cpu?.per_core?.[0]?.brand} />
             <KV
               k="核心"
@@ -318,14 +327,17 @@ export function NodeDetail({ node, onClose, showSource, siteTokens = [] }: Props
                     : null
               }
             />
-          </Section>
-
-          <Section title="网络与负载">
-            <KV k="累计接收" v={d?.total_received != null ? bytes(d.total_received) : null} />
-            <KV k="累计发送" v={d?.total_transmitted != null ? bytes(d.total_transmitted) : null} />
             <KV k="磁盘读" v={d?.read_speed != null ? `${bytes(d.read_speed)}/s` : null} />
             <KV k="磁盘写" v={d?.write_speed != null ? `${bytes(d.write_speed)}/s` : null} />
-            <KV k="进程数" v={d?.process_count} />
+          </Section>
+
+          <Section title="网络与运行态" className="h-full">
+            <KV k="系统负载" v={loadAvg} />
+            <KV k="累计流量" v={
+              d?.total_received != null && d?.total_transmitted != null 
+                ? `↓ ${bytes(d.total_received)} / ↑ ${bytes(d.total_transmitted)}` 
+                : null
+            } />
             <KV
               k="TCP / UDP"
               v={
@@ -343,9 +355,9 @@ export function NodeDetail({ node, onClose, showSource, siteTokens = [] }: Props
   )
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, children, className = '' }: { title: string; children: ReactNode; className?: string }) {
   return (
-    <Card className="p-5 transition-all duration-300 hover:shadow-md hover:border-primary/20 hover:-translate-y-0.5 group">
+    <Card className={`p-5 transition-all duration-300 hover:shadow-md hover:border-primary/20 hover:-translate-y-0.5 group ${className}`}>
       <div className="text-xs uppercase tracking-widest text-muted-foreground/70 mb-4 font-semibold group-hover:text-primary/70 transition-colors">{title}</div>
       {children}
     </Card>
@@ -353,11 +365,11 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 function KV({ k, v }: { k: string; v: ReactNode }) {
-  if (v == null || v === '') return null
+  const displayV = v == null || v === '' ? '—' : v;
   return (
-    <div className="flex items-center justify-between gap-3 text-sm py-2 border-b border-border/40 last:border-0 hover:bg-muted/30 px-2 -mx-2 rounded transition-colors group">
-      <span className="text-muted-foreground">{k}</span>
-      <span className="font-mono text-right truncate bg-secondary/40 group-hover:bg-secondary/60 px-1.5 py-0.5 rounded text-[13px] transition-colors">{v}</span>
+    <div className="flex items-center justify-between gap-3 text-sm py-2 border-b border-border/40 last:border-0 hover:bg-muted/30 px-2 -mx-2 rounded transition-colors group h-10">
+      <span className="text-muted-foreground shrink-0">{k}</span>
+      <span className="font-mono text-right truncate bg-secondary/40 group-hover:bg-secondary/60 px-1.5 py-0.5 rounded text-[13px] transition-colors max-w-[200px]">{displayV}</span>
     </div>
   )
 }
