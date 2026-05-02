@@ -22,8 +22,8 @@ export function NodeCard({ node }: { node: Node }) {
     <a href={`#${encodeURIComponent(node.uuid)}`} className="block">
       <Card
         className={cn(
-          'p-4 transition hover:border-primary/50 hover:shadow-md flex flex-col gap-3',
-          !node.online && 'opacity-60',
+          'p-4 transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:-translate-y-0.5 flex flex-col gap-3',
+          !node.online && 'opacity-60 grayscale',
         )}
       >
         <div className="flex items-center gap-2">
@@ -38,8 +38,10 @@ export function NodeCard({ node }: { node: Node }) {
         </div>
 
         {(os || virt) && (
-          <div className="font-mono text-xs text-muted-foreground truncate">
-            {[os, virt].filter(Boolean).join(' · ')}
+          <div className="flex">
+            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded text-muted-foreground bg-secondary/50 truncate">
+              {[os, virt].filter(Boolean).join(' · ')}
+            </span>
           </div>
         )}
 
@@ -57,10 +59,14 @@ export function NodeCard({ node }: { node: Node }) {
           />
         </div>
 
-        <div className="pt-2.5 border-t border-dashed font-mono text-xs text-muted-foreground space-y-1.5">
-          <div className="flex items-center gap-3">
+        <div className="p-2.5 mt-0.5 rounded-lg bg-muted/40 font-mono text-xs text-muted-foreground space-y-2">
+          <div className="flex items-center justify-between">
             <Stat icon={ArrowDown}>{bytes(u.netIn || 0)}/s</Stat>
             <Stat icon={ArrowUp}>{bytes(u.netOut || 0)}/s</Stat>
+          </div>
+          <div className="flex items-center justify-between">
+            <Stat icon={ArrowDown}>{bytes(node.dynamic?.total_received || 0)}</Stat>
+            <Stat icon={ArrowUp}>{bytes(node.dynamic?.total_transmitted || 0)}</Stat>
           </div>
           <div className="flex items-center gap-3">
             <Stat icon={Clock}>{uptime(u.uptime)}</Stat>
@@ -69,9 +75,9 @@ export function NodeCard({ node }: { node: Node }) {
         </div>
 
         {tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5 mt-0.5">
             {tags.map(t => (
-              <Badge key={t} variant="outline" className="text-[10px]">
+              <Badge key={t} variant="secondary" className="text-[10px] font-normal bg-primary/10 text-primary hover:bg-primary/15 border-transparent">
                 {t}
               </Badge>
             ))}
@@ -108,7 +114,7 @@ function Metric({
         <span className="text-muted-foreground">{label}</span>
         <span className="font-mono">{pct(value)}</span>
       </div>
-      <Progress value={value} indicatorClassName={loadColor(value)} className="mt-1 h-1.5" />
+      <Progress value={value} indicatorClassName={loadColor(value)} className="mt-1.5 h-1" />
       {sub && (
         <div
           className="font-mono text-[11px] text-muted-foreground mt-1 truncate"

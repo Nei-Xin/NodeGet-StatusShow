@@ -184,7 +184,7 @@ export function NodeDetail({ node, onClose, showSource, siteTokens = [] }: Props
 
   return (
     <div className="fixed inset-0 z-50 bg-background overflow-y-auto animate-in fade-in duration-150">
-      <div className="sticky top-0 z-10 backdrop-blur bg-background/85 border-b">
+      <div className="sticky top-0 z-10 backdrop-blur-md bg-background/70 border-b">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-2 sm:gap-3">
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="返回" className="shrink-0">
             <ArrowLeft className="h-4 w-4" />
@@ -199,15 +199,15 @@ export function NodeDetail({ node, onClose, showSource, siteTokens = [] }: Props
             {node.uuid}
           </span>
           <div className="ml-auto flex flex-wrap gap-1.5 shrink-0">
-            {node.meta?.region && <Badge variant="secondary">{node.meta.region}</Badge>}
+            {node.meta?.region && <Badge variant="secondary" className="font-normal bg-primary/10 text-primary hover:bg-primary/15 border-transparent">{node.meta.region}</Badge>}
             {showSource && (
-              <Badge variant="secondary" className="hidden sm:inline-flex">
+              <Badge variant="secondary" className="hidden sm:inline-flex font-normal bg-primary/10 text-primary hover:bg-primary/15 border-transparent">
                 {node.source}
               </Badge>
             )}
-            {virt && <Badge variant="secondary">{virt}</Badge>}
+            {virt && <Badge variant="secondary" className="font-normal bg-primary/10 text-primary hover:bg-primary/15 border-transparent">{virt}</Badge>}
             {tags.map(t => (
-              <Badge key={t} variant="outline">
+              <Badge key={t} variant="secondary" className="font-normal bg-primary/10 text-primary hover:bg-primary/15 border-transparent">
                 {t}
               </Badge>
             ))}
@@ -345,8 +345,8 @@ export function NodeDetail({ node, onClose, showSource, siteTokens = [] }: Props
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <Card className="p-5">
-      <div className="text-xs uppercase tracking-wide text-muted-foreground mb-3">{title}</div>
+    <Card className="p-5 transition-all duration-300 hover:shadow-md hover:border-primary/20 hover:-translate-y-0.5 group">
+      <div className="text-xs uppercase tracking-widest text-muted-foreground/70 mb-4 font-semibold group-hover:text-primary/70 transition-colors">{title}</div>
       {children}
     </Card>
   )
@@ -355,9 +355,9 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function KV({ k, v }: { k: string; v: ReactNode }) {
   if (v == null || v === '') return null
   return (
-    <div className="flex justify-between gap-3 text-sm py-1">
+    <div className="flex items-center justify-between gap-3 text-sm py-2 border-b border-border/40 last:border-0 hover:bg-muted/30 px-2 -mx-2 rounded transition-colors group">
       <span className="text-muted-foreground">{k}</span>
-      <span className="font-mono text-right truncate">{v}</span>
+      <span className="font-mono text-right truncate bg-secondary/40 group-hover:bg-secondary/60 px-1.5 py-0.5 rounded text-[13px] transition-colors">{v}</span>
     </div>
   )
 }
@@ -369,36 +369,38 @@ function Ring({ label, value, sub }: { label: string; value?: number; sub?: stri
   const hasValue = Number.isFinite(value)
 
   return (
-    <div className="flex flex-col items-center gap-2 min-w-0">
-      <div className="relative w-24 h-24 sm:w-28 sm:h-28">
-        <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+    <div className="flex flex-col items-center gap-3 min-w-0 group cursor-default">
+      <div className="relative w-24 h-24 sm:w-28 sm:h-28 transition-transform duration-300 group-hover:scale-105">
+        <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90 drop-shadow-sm">
           <circle
             cx="50" cy="50" r={r}
-            fill="none" strokeWidth={8}
-            className="stroke-secondary"
+            fill="none" strokeWidth={5}
+            className="stroke-secondary/60 transition-colors duration-300 group-hover:stroke-secondary"
           />
           {hasValue && (
             <circle
               cx="50" cy="50" r={r}
-              fill="none" strokeWidth={8}
+              fill="none" strokeWidth={5}
               className={strokeColor(value)}
               strokeDasharray={c}
               strokeDashoffset={c - (c * v) / 100}
               strokeLinecap="round"
-              style={{ transition: 'stroke-dashoffset 400ms ease' }}
+              style={{ transition: 'stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1)' }}
             />
           )}
         </svg>
-        <div className="absolute inset-0 flex items-center justify-center text-base sm:text-lg font-semibold">
-          {pct(value)}
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="font-mono text-xl sm:text-2xl font-bold tracking-tight">{pct(value)}</span>
         </div>
       </div>
-      <div className="text-sm font-medium">{label}</div>
-      {sub && (
-        <div className="text-xs font-mono text-muted-foreground truncate max-w-full" title={sub}>
-          {sub}
-        </div>
-      )}
+      <div className="flex flex-col items-center gap-0.5">
+        <div className="text-sm font-medium tracking-wide text-foreground/80 group-hover:text-foreground transition-colors">{label}</div>
+        {sub && (
+          <div className="text-[11px] font-mono text-muted-foreground/70 truncate max-w-[120px] px-2" title={sub}>
+            {sub}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
