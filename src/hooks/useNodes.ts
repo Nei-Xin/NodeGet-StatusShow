@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BackendPool } from '../api/pool'
-import { dynamicSummaryMulti, kvGetMulti, listAgentUuids, staticDataMulti } from '../api/methods'
+import { dynamicDataMulti, dynamicSummaryMulti, kvGetMulti, listAgentUuids, staticDataMulti } from '../api/methods'
 import { isOnline } from '../utils/status'
-import type { DynamicSummary, HistorySample, Node, NodeMeta, SiteConfig } from '../types'
+import type { DynamicData, DynamicSummary, HistorySample, Node, NodeMeta, SiteConfig } from '../types'
 
 type Agent = Pick<Node, 'uuid' | 'source' | 'meta' | 'static'>
 
@@ -36,6 +36,7 @@ const DYNAMIC_FIELDS = [
   'tcp_connections',
   'udp_connections',
 ]
+const DYNAMIC_DETAIL_FIELDS = ['load']
 const META_KEYS = [
   'metadata_name',
   'metadata_region',
@@ -83,6 +84,22 @@ function sampleFrom(row: DynamicSummary): HistorySample {
         : null,
     netIn: row.receive_speed ?? 0,
     netOut: row.transmit_speed ?? 0,
+  }
+}
+
+function finiteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v)
+}
+
+function mergeDynamicLoad(row: DynamicSummary, detail?: DynamicData): DynamicSummary {
+  const load = detail?.load
+  if (!load) return row
+
+  return {
+    ...row,
+    load_one: finiteNumber(load.one) ? load.one : row.load_one,
+    load_five: finiteNumber(load.five) ? load.five : row.load_five,
+    load_fifteen: finiteNumber(load.fifteen) ? load.fifteen : row.load_fifteen,
   }
 }
 
@@ -165,8 +182,12 @@ export function useNodes(config: SiteConfig | null) {
           const uuids = sourceUuids.get(entry.name) || []
           if (!uuids.length) return
           try {
-            const rows = await dynamicSummaryMulti(entry.client, uuids, DYNAMIC_FIELDS)
-            for (const row of rows || []) updates.push(row)
+            const [summaryRows, detailRows] = await Promise.all([
+              dynamicSummaryMulti(entry.client, uuids, DYNAMIC_FIELDS),
+              dynamicDataMulti(entry.client, uuids, DYNAMIC_DETAIL_FIELDS).catch(() => []),
+            ])
+            const detailByUuid = new Map((detailRows || []).map(row => [row.uuid, row]))
+            for (const row of summaryRows || []) updates.push(mergeDynamicLoad(row, detailByUuid.get(row.uuid)))
           } catch {}
         }),
       )

@@ -1,5 +1,5 @@
 import type { RpcClient } from './client'
-import type { DynamicSummary, StaticData, TaskRecord } from '../types'
+import type { DynamicData, DynamicSummary, StaticData, TaskRecord } from '../types'
 
 export const listAgentUuids = (c: RpcClient) =>
   c.call<{ uuids?: string[] }>('nodeget-server_list_all_agent_uuid', {}).then(r => r?.uuids || [])
@@ -9,6 +9,9 @@ export const staticDataMulti = (c: RpcClient, uuids: string[], fields: string[])
 
 export const dynamicSummaryMulti = (c: RpcClient, uuids: string[], fields: string[]) =>
   c.call<DynamicSummary[]>('agent_dynamic_summary_multi_last_query', { uuids, fields })
+
+export const dynamicDataMulti = (c: RpcClient, uuids: string[], fields: string[]) =>
+  c.call<DynamicData[]>('agent_dynamic_data_multi_last_query', { uuids, fields })
 
 export const kvGetMulti = (
   c: RpcClient,

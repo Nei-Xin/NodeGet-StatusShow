@@ -64,6 +64,16 @@ export interface DynamicSummary {
   udp_connections?: number
 }
 
+export interface DynamicData {
+  uuid: string
+  timestamp: number
+  load?: {
+    one?: number
+    five?: number
+    fifteen?: number
+  }
+}
+
 export interface HistorySample {
   t: number
   cpu: number | null
